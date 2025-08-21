@@ -1,0 +1,1103 @@
+// Global Variables
+let sections = JSON.parse(localStorage.getItem('networkSections') || '{}');
+let pinnedSections = JSON.parse(localStorage.getItem('pinnedSections') || '[]');
+let agents = JSON.parse(localStorage.getItem('agents') || '{"hamad": {"name": "حمد", "devices": []}, "ali": {"name": "علي", "devices": []}, "ahmed": {"name": "أحمد", "devices": []}}');
+let credentialsVisible = true;
+let currentDeviceId = null;
+
+// Telegram Configuration
+const TELEGRAM_BOT_TOKEN = '8226837720:AAGbaDJM1RqqZDA17cv6zwkb1hCrZAv-Jzk';
+const TELEGRAM_CHAT_ID = '-1002939755592';
+
+// Initialize the application
+document.addEventListener('DOMContentLoaded', function() {
+    initializeApp();
+});
+
+function initializeApp() {
+    // Initialize default sections if empty
+    if (Object.keys(sections).length === 0) {
+        sections = {
+            'repository-repeater': {
+                name: 'مكرر المستودع',
+                icon: 'fas fa-wifi',
+                agent: 'hamad',
+                devices: {
+                    'cisco-switch': {
+                        id: 'cisco-switch',
+                        name: 'Cisco Switch Main',
+                        type: 'cisco',
+                        ip: '192.168.1.1',
+                        username: 'admin',
+                        password: 'admin123',
+                        status: 'online'
+                    },
+                    'mikrotik-group-a': {
+                        id: 'mikrotik-group-a',
+                        name: 'MIT Group A',
+                        type: 'mikrotik',
+                        ip: '10.42.85.2',
+                        username: 'alaraby',
+                        password: 'sf,vj',
+                        status: 'online'
+                    }
+                }
+            },
+            'residential-repeater': {
+                name: 'مكرر سكني',
+                icon: 'fas fa-home',
+                agent: 'ali',
+                devices: {}
+            }
+        };
+        localStorage.setItem('networkSections', JSON.stringify(sections));
+    }
+
+    loadSections();
+    updateStatistics();
+    loadAgents();
+    populateDeviceSectionSelect();
+}
+
+function showSection(sectionName) {
+    // Hide all sections
+    document.querySelectorAll('[id$="-section"]').forEach(section => {
+        section.style.display = 'none';
+    });
+
+    // Show selected section
+    document.getElementById(sectionName + '-section').style.display = 'block';
+
+    // Update active nav
+    document.querySelectorAll('.nav-link').forEach(link => {
+        link.classList.remove('active');
+    });
+    event.target.classList.add('active');
+
+    // Load specific section data
+    if (sectionName === 'agents') {
+        loadAgents();
+    } else if (sectionName === 'statistics') {
+        updateStatistics();
+        drawNetworkChart();
+    }
+}
+
+function loadSections() {
+    const pinnedContainer = document.getElementById('pinnedSections');
+    const regularContainer = document.getElementById('regularSections');
+
+    pinnedContainer.innerHTML = '';
+    regularContainer.innerHTML = '';
+
+    // Sort sections - pinned first
+    const sortedSections = Object.entries(sections).sort((a, b) => {
+        const aPinned = pinnedSections.includes(a[0]);
+        const bPinned = pinnedSections.includes(b[0]);
+
+        if (aPinned && !bPinned) return -1;
+        if (!aPinned && bPinned) return 1;
+        return 0;
+    });
+
+    sortedSections.forEach(([sectionId, section]) => {
+        const sectionCard = createSectionCard(sectionId, section);
+
+        if (pinnedSections.includes(sectionId)) {
+            pinnedContainer.appendChild(sectionCard);
+        } else {
+            regularContainer.appendChild(sectionCard);
+        }
+    });
+}
+
+function createSectionCard(sectionId, section) {
+    const card = document.createElement('div');
+    card.className = `col-md-6 col-lg-4 mb-4`;
+
+    const isPinned = pinnedSections.includes(sectionId);
+
+    card.innerHTML = `
+        <div class="section-card ${isPinned ? 'pinned' : ''}">
+            <button class="btn btn-sm ${isPinned ? 'btn-warning' : 'btn-outline-warning'} pin-btn"
+                    onclick="togglePin('${sectionId}')">
+                <i class="fas fa-thumbtack"></i>
+            </button>
+
+            <div class="section-header">
+                <h4><i class="${section.icon}"></i> ${section.name}</h4>
+                <div class="dropdown">
+                    <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="dropdown">
+                        <i class="fas fa-ellipsis-v"></i>
+                    </button>
+                    <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" onclick="editSection('${sectionId}')">
+                            <i class="fas fa-edit"></i> تعديل القسم</a></li>
+                        <li><a class="dropdown-item" onclick="deleteSection('${sectionId}')">
+                            <i class="fas fa-trash"></i> حذف القسم</a></li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <small class="text-muted">
+                    <i class="fas fa-user"></i> الوكيل: ${agents[section.agent]?.name || 'غير محدد'}
+                </small>
+            </div>
+
+            <div class="devices-container">
+                ${createDevicesHTML(section.devices)}
+            </div>
+
+            <div class="mt-3">
+                <button class="btn btn-success btn-sm" onclick="showAddDeviceModal('${sectionId}')">
+                    <i class="fas fa-plus"></i> إضافة جهاز
+                </button>
+            </div>
+        </div>
+    `;
+
+    return card;
+}
+
+function createDevicesHTML(devices) {
+    if (!devices || Object.keys(devices).length === 0) {
+        return '<p class="text-muted text-center">لا توجد أجهزة</p>';
+    }
+
+    return Object.entries(devices).map(([deviceId, device]) => {
+        const statusClass = device.status === 'online' ? 'status-online' : 'status-offline';
+
+        return `
+            <div class="device-card card device-${device.type}">
+                <div class="card-body p-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="mb-1">
+                                <i class="${getDeviceIcon(device.type)}"></i>
+                                ${device.name}
+                                <span class="status-indicator ${statusClass}"></span>
+                            </h6>
+                            <small class="text-muted">
+                                <span class="${credentialsVisible ? '' : 'hide-credentials'}">
+                                    ${device.ip} | ${device.username}
+                                </span>
+                            </small>
+                        </div>
+                        <div class="btn-group-vertical btn-group-sm">
+                            <button class="btn btn-connect btn-sm" onclick="connectToDevice('${deviceId}')">
+                                <i class="fas fa-plug"></i> اتصال
+                            </button>
+                            <button class="btn btn-info btn-sm" onclick="showDeviceDetails('${deviceId}')">
+                                <i class="fas fa-list"></i> التفاصيل
+                            </button>
+                            <button class="btn btn-secondary btn-sm" onclick="editDevice('${deviceId}')">
+                                <i class="fas fa-edit"></i> تعديل
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function getDeviceIcon(type) {
+    const icons = {
+        mikrotik: 'fas fa-wifi',
+        ubiquiti: 'fas fa-broadcast-tower',
+        memosa: 'fas fa-satellite-dish',
+        cisco: 'fas fa-network-wired'
+    };
+    return icons[type] || 'fas fa-router';
+}
+
+function togglePin(sectionId) {
+    const index = pinnedSections.indexOf(sectionId);
+    if (index > -1) {
+        pinnedSections.splice(index, 1);
+    } else {
+        pinnedSections.push(sectionId);
+    }
+
+    localStorage.setItem('pinnedSections', JSON.stringify(pinnedSections));
+    loadSections();
+}
+
+function showAddSectionModal() {
+    const modal = new bootstrap.Modal(document.getElementById('addSectionModal'));
+    modal.show();
+}
+
+function addNewSection() {
+    const name = document.getElementById('sectionName').value;
+    const icon = document.getElementById('sectionIcon').value;
+    const agent = document.getElementById('sectionAgent').value;
+
+    if (!name) return;
+
+    const sectionId = name.toLowerCase().replace(/\s+/g, '-');
+    sections[sectionId] = {
+        name: name,
+        icon: icon,
+        agent: agent,
+        devices: {}
+    };
+
+    localStorage.setItem('networkSections', JSON.stringify(sections));
+    loadSections();
+    populateDeviceSectionSelect();
+
+    bootstrap.Modal.getInstance(document.getElementById('addSectionModal')).hide();
+    document.getElementById('addSectionForm').reset();
+}
+
+function showAddDeviceModal(sectionId = null) {
+    populateDeviceSectionSelect();
+    if (sectionId) {
+        document.getElementById('deviceSection').value = sectionId;
+    }
+
+    const modal = new bootstrap.Modal(document.getElementById('addDeviceModal'));
+    modal.show();
+}
+
+function populateDeviceSectionSelect() {
+    const select = document.getElementById('deviceSection');
+    select.innerHTML = '<option value="">اختر القسم</option>';
+
+    Object.entries(sections).forEach(([sectionId, section]) => {
+        select.innerHTML += `<option value="${sectionId}">${section.name}</option>`;
+    });
+}
+
+function updateCredentials() {
+    const deviceType = document.getElementById('deviceType').value;
+    const usernameInput = document.getElementById('deviceUsername');
+    const passwordInput = document.getElementById('devicePassword');
+
+    const defaults = {
+        mikrotik: { username: 'admin', password: '' },
+        ubiquiti: { username: 'ubnt', password: 'ubnt' },
+        memosa: { username: 'admin', password: 'admin' },
+        cisco: { username: 'admin', password: 'cisco' }
+    };
+
+    if (defaults[deviceType]) {
+        usernameInput.value = defaults[deviceType].username;
+        passwordInput.value = defaults[deviceType].password;
+    }
+}
+
+function addNewDevice() {
+    const name = document.getElementById('deviceName').value;
+    const ip = document.getElementById('deviceIP').value;
+    const type = document.getElementById('deviceType').value;
+    const username = document.getElementById('deviceUsername').value;
+    const password = document.getElementById('devicePassword').value;
+    const sectionId = document.getElementById('deviceSection').value;
+
+    if (!name || !ip || !type || !sectionId) return;
+
+    const deviceId = name.toLowerCase().replace(/\s+/g, '-') + '-' + Date.now();
+
+    if (!sections[sectionId].devices) {
+        sections[sectionId].devices = {};
+    }
+
+    sections[sectionId].devices[deviceId] = {
+        id: deviceId,
+        name: name,
+        type: type,
+        ip: ip,
+        username: username,
+        password: password,
+        status: 'online'
+    };
+
+    localStorage.setItem('networkSections', JSON.stringify(sections));
+    loadSections();
+
+    bootstrap.Modal.getInstance(document.getElementById('addDeviceModal')).hide();
+    document.getElementById('addDeviceForm').reset();
+}
+
+function editDevice(deviceId) {
+    const device = findDeviceById(deviceId);
+    if (!device) return;
+
+    document.getElementById('editDeviceId').value = deviceId;
+    document.getElementById('editDeviceName').value = device.name;
+    document.getElementById('editDeviceIP').value = device.ip;
+    document.getElementById('editDeviceUsername').value = device.username;
+    document.getElementById('editDevicePassword').value = device.password;
+
+    const modal = new bootstrap.Modal(document.getElementById('editDeviceModal'));
+    modal.show();
+}
+
+function saveDeviceChanges() {
+    const deviceId = document.getElementById('editDeviceId').value;
+    const device = findDeviceById(deviceId);
+    if (!device) return;
+
+    device.name = document.getElementById('editDeviceName').value;
+    device.ip = document.getElementById('editDeviceIP').value;
+    device.username = document.getElementById('editDeviceUsername').value;
+    device.password = document.getElementById('editDevicePassword').value;
+
+    localStorage.setItem('networkSections', JSON.stringify(sections));
+    loadSections();
+
+    bootstrap.Modal.getInstance(document.getElementById('editDeviceModal')).hide();
+}
+
+function deleteDevice() {
+    const deviceId = document.getElementById('editDeviceId').value;
+
+    for (let sectionId in sections) {
+        if (sections[sectionId].devices && sections[sectionId].devices[deviceId]) {
+            delete sections[sectionId].devices[deviceId];
+            break;
+        }
+    }
+
+    localStorage.setItem('networkSections', JSON.stringify(sections));
+    loadSections();
+
+    bootstrap.Modal.getInstance(document.getElementById('editDeviceModal')).hide();
+}
+
+function findDeviceById(deviceId) {
+    for (let sectionId in sections) {
+        if (sections[sectionId].devices && sections[sectionId].devices[deviceId]) {
+            return sections[sectionId].devices[deviceId];
+        }
+    }
+    return null;
+}
+
+function connectToDevice(deviceId) {
+    const device = findDeviceById(deviceId);
+    if (!device) return;
+
+    if (device.type === 'ubiquiti') {
+        // NOTE: Bypassing the 'net::ERR_CERT_AUTHORITY_INVALID' warning is not possible
+        // from client-side JavaScript due to browser security policies. This is a
+        // standard security feature to protect against man-in-the-middle attacks.
+        // The best approach is to open the device's IP in a new tab and have the
+        // user manually accept the self-signed certificate.
+        const url = `https://${device.ip}`;
+
+        // The auto-login form is a best-effort attempt but may not work on all firmware versions.
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = url;
+        form.target = '_blank';
+
+        const usernameField = document.createElement('input');
+        usernameField.type = 'hidden';
+        usernameField.name = 'username';
+        usernameField.value = device.username;
+
+        const passwordField = document.createElement('input');
+        passwordField.type = 'hidden';
+        passwordField.name = 'password';
+        passwordField.value = device.password;
+
+        form.appendChild(usernameField);
+        form.appendChild(passwordField);
+        document.body.appendChild(form);
+
+        // Open in new window and try to auto-login
+        const newWindow = window.open(url, '_blank');
+        setTimeout(() => {
+            try {
+                form.submit();
+            } catch (e) {
+                console.warn("Auto-login form submission failed. This might be due to cross-origin restrictions or the page not being ready.", e);
+            } finally {
+                document.body.removeChild(form);
+            }
+        }, 1500);
+
+    } else if (device.type === 'cisco') {
+        // Open SSH connection simulation
+        alert(`اتصال SSH إلى ${device.name} (${device.ip})\nاسم المستخدم: ${device.username}\nكلمة المرور: ${device.password}`);
+    } else {
+        // For MikroTik and Memosa - simulate SSH/Telnet
+        alert(`اتصال إلى ${device.name} (${device.ip})\nاسم المستخدم: ${device.username}\nكلمة المرور: ${device.password}`);
+    }
+}
+
+function showDeviceDetails(deviceId) {
+    const device = findDeviceById(deviceId);
+    if (!device) return;
+
+    currentDeviceId = deviceId;
+    document.getElementById('deviceDetailsTitle').textContent = `تفاصيل ${device.name}`;
+
+    const tableBody = document.getElementById('subscribersTable');
+    tableBody.innerHTML = `
+        <tr>
+            <td colspan="8" class="text-center">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-2">جاري تحميل بيانات المشتركين...</p>
+            </td>
+        </tr>
+    `;
+
+    const modal = new bootstrap.Modal(document.getElementById('deviceDetailsModal'));
+    modal.show();
+
+    // Simulate network delay
+    setTimeout(() => {
+        loadSubscribersData(device);
+    }, 1500);
+}
+
+function loadSubscribersData(device) {
+    // Simulate loading subscribers data
+    const subscribers = generateMockSubscribers(device);
+    const tableBody = document.getElementById('subscribersTable');
+
+    if (subscribers.length === 0) {
+        tableBody.innerHTML = `<tr><td colspan="8" class="text-center">لا يوجد مشتركين لعرضهم.</td></tr>`;
+        return;
+    }
+
+    tableBody.innerHTML = subscribers.map(subscriber => `
+        <tr class="subscriber-row">
+            <td><strong>${subscriber.username}</strong></td>
+            <td>${subscriber.ip}</td>
+            <td><span class="signal-indicator ${getSignalClass(subscriber.ccq)}">${subscriber.ccq}%</span></td>
+            <td><span class="signal-indicator ${getSignalClass(subscriber.tx)}">${subscriber.tx} dBm</span></td>
+            <td><span class="signal-indicator ${getSignalClass(subscriber.rx)}">${subscriber.rx} dBm</span></td>
+            <td>
+                <div>${subscriber.dataUsage} GB</div>
+                <div class="data-usage-bar">
+                    <div class="data-usage-fill" style="width: ${subscriber.dataUsage}%"></div>
+                </div>
+            </td>
+            <td>${subscriber.lastSeen}</td>
+            <td>
+                <button class="btn btn-telegram btn-sm" onclick="sendSubscriberToTelegram('${subscriber.username}', '${subscriber.ip}', ${subscriber.ccq}, ${subscriber.tx}, ${subscriber.rx})">
+                    <i class="fab fa-telegram"></i>
+                </button>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function generateMockSubscribers(device) {
+    const subscriberCount = Math.floor(Math.random() * 50) + 10;
+    const subscribers = [];
+
+    for (let i = 1; i <= subscriberCount; i++) {
+        const baseIP = device.ip.split('.').slice(0, 3).join('.');
+        subscribers.push({
+            username: `user${i.toString().padStart(3, '0')}`,
+            ip: `${baseIP}.${100 + i}`,
+            ccq: Math.floor(Math.random() * 40) + 60,
+            tx: Math.floor(Math.random() * 30) - 65,
+            rx: Math.floor(Math.random() * 30) - 65,
+            dataUsage: Math.floor(Math.random() * 80) + 20,
+            lastSeen: new Date(Date.now() - Math.random() * 3600000).toLocaleString('ar-EG')
+        });
+    }
+
+    return subscribers.sort((a, b) => b.ccq - a.ccq);
+}
+
+function getSignalClass(value) {
+    if (value >= 80) return 'signal-excellent';
+    if (value >= 60) return 'signal-good';
+    if (value >= 40) return 'signal-fair';
+    return 'signal-poor';
+}
+
+function toggleCredentials() {
+    credentialsVisible = !credentialsVisible;
+    const icon = document.getElementById('toggleIcon');
+
+    if (credentialsVisible) {
+        icon.className = 'fas fa-eye';
+        document.querySelectorAll('.hide-credentials').forEach(el => {
+            el.classList.remove('hide-credentials');
+        });
+    } else {
+        icon.className = 'fas fa-eye-slash';
+        document.querySelectorAll('small.text-muted span').forEach(el => {
+            el.classList.add('hide-credentials');
+        });
+    }
+
+    loadSections();
+}
+
+function refreshDeviceData() {
+    const device = findDeviceById(currentDeviceId);
+    if (device) {
+        loadSubscribersData(device);
+        showNotification('تم تحديث البيانات', 'success');
+    }
+}
+
+// Telegram Functions
+async function sendToTelegram(message) {
+    try {
+        const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                chat_id: TELEGRAM_CHAT_ID,
+                text: message,
+                parse_mode: 'HTML'
+            })
+        });
+
+        if (response.ok) {
+            showNotification('تم إرسال التقرير إلى التلغرام', 'success');
+        } else {
+            showNotification('فشل في إرسال التقرير', 'error');
+        }
+    } catch (error) {
+        console.error('Telegram error:', error);
+        showNotification('خطأ في الاتصال بالتلغرام', 'error');
+    }
+}
+
+async function sendSubscriberToTelegram(username, ip, ccq, tx, rx) {
+    const device = findDeviceById(currentDeviceId);
+    const message = `
+🔸 <b>تقرير مشترك فردي</b>
+📡 الجهاز: ${device.name}
+👤 المشترك: ${username}
+🌐 IP: ${ip}
+📊 CCQ: ${ccq}%
+📶 TX: ${tx} dBm
+📶 RX: ${rx} dBm
+🕐 الوقت: ${new Date().toLocaleString('ar-EG')}
+            `.trim();
+
+    await sendToTelegram(message);
+}
+
+async function sendAllToTelegram() {
+    const device = findDeviceById(currentDeviceId);
+    const subscribers = generateMockSubscribers(device);
+
+    const message = `
+📡 <b>تقرير شامل - ${device.name}</b>
+🌐 IP: ${device.ip}
+📊 عدد المشتركين: ${subscribers.length}
+
+<b>أفضل 10 مشتركين (CCQ):</b>
+${subscribers.slice(0, 10).map((s, i) =>
+    `${i + 1}. ${s.username} - CCQ: ${s.ccq}% - IP: ${s.ip}`
+).join('\n')}
+
+🕐 وقت التقرير: ${new Date().toLocaleString('ar-EG')}
+            `.trim();
+
+    await sendToTelegram(message);
+}
+
+// Agents Section
+function loadAgents() {
+    const container = document.getElementById('agentsContainer');
+    container.innerHTML = '';
+
+    Object.entries(agents).forEach(([agentId, agent]) => {
+        const agentDevices = getAgentDevices(agentId);
+
+        const agentCard = document.createElement('div');
+        agentCard.className = 'col-md-6 col-lg-4 mb-4';
+
+        agentCard.innerHTML = `
+            <div class="agent-card" onclick="showAgentDetails('${agentId}')">
+                <h4><i class="fas fa-user"></i> ${agent.name}</h4>
+                <div class="mt-3">
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>الأجهزة المتصلة:</span>
+                        <strong>${agentDevices.length}</strong>
+                    </div>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>الأقسام:</span>
+                        <strong>${getAgentSections(agentId).length}</strong>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <span>إجمالي المشتركين:</span>
+                        <strong>${agentDevices.length * 25}</strong>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        container.appendChild(agentCard);
+    });
+}
+
+function getAgentDevices(agentId) {
+    const devices = [];
+    Object.entries(sections).forEach(([sectionId, section]) => {
+        if (section.agent === agentId && section.devices) {
+            devices.push(...Object.values(section.devices));
+        }
+    });
+    return devices;
+}
+
+function getAgentSections(agentId) {
+    return Object.entries(sections).filter(([_, section]) => section.agent === agentId);
+}
+
+function showAgentDetails(agentId) {
+    const agent = agents[agentId];
+    const agentSections = getAgentSections(agentId);
+
+    // Create a temporary section to show agent's devices
+    const agentSection = document.createElement('div');
+    agentSection.className = 'modal fade';
+    agentSection.innerHTML = `
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">أجهزة الوكيل: ${agent.name}</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        ${agentSections.map(([sectionId, section]) => `
+                            <div class="col-md-6 mb-4">
+                                <div class="section-card">
+                                    <h5><i class="${section.icon}"></i> ${section.name}</h5>
+                                    ${createDevicesHTML(section.devices)}
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(agentSection);
+    const modal = new bootstrap.Modal(agentSection);
+    modal.show();
+
+    modal._element.addEventListener('hidden.bs.modal', () => {
+        document.body.removeChild(agentSection);
+    });
+}
+
+// Discovery Section
+function startNetworkDiscovery() {
+    const resultsContainer = document.getElementById('discoveryResults');
+    resultsContainer.innerHTML = '<div class="text-center"><div class="spinner-border" role="status"></div><p class="mt-2">جاري استكشاف الشبكة...</p></div>';
+
+    setTimeout(() => {
+        const discoveredDevices = generateDiscoveryResults();
+        displayDiscoveryResults(discoveredDevices);
+    }, 3000);
+}
+
+function generateDiscoveryResults() {
+    const devices = [];
+    const subnets = ['10.42.85', '10.42.96', '192.168.1', '192.168.100'];
+
+    subnets.forEach(subnet => {
+        const deviceCount = Math.floor(Math.random() * 20) + 5;
+        for (let i = 1; i <= deviceCount; i++) {
+            const ip = `${subnet}.${i + 1}`;
+            const types = ['mikrotik', 'ubiquiti', 'memosa', 'cisco'];
+            const type = types[Math.floor(Math.random() * types.length)];
+
+            devices.push({
+                ip: ip,
+                type: type,
+                name: `Device-${ip.replace(/\./g, '-')}`,
+                status: Math.random() > 0.2 ? 'online' : 'offline',
+                mac: Array.from({length: 6}, () => Math.floor(Math.random() * 256).toString(16).padStart(2, '0')).join(':').toUpperCase()
+            });
+        }
+    });
+
+    return devices;
+}
+
+function displayDiscoveryResults(devices) {
+    const resultsContainer = document.getElementById('discoveryResults');
+
+    resultsContainer.innerHTML = `
+        <div class="section-card">
+            <h4>نتائج الاستكشاف - ${devices.length} جهاز</h4>
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>IP Address</th>
+                            <th>النوع</th>
+                            <th>MAC Address</th>
+                            <th>الحالة</th>
+                            <th>الإجراءات</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${devices.map(device => `
+                            <tr class="discovery-device">
+                                <td><strong>${device.ip}</strong></td>
+                                <td>
+                                    <i class="${getDeviceIcon(device.type)}"></i>
+                                    ${device.type.toUpperCase()}
+                                </td>
+                                <td><code>${device.mac}</code></td>
+                                <td>
+                                    <span class="status-indicator ${device.status === 'online' ? 'status-online' : 'status-offline'}"></span>
+                                    ${device.status === 'online' ? 'متصل' : 'غير متصل'}
+                                </td>
+                                <td>
+                                    <button class="btn btn-success btn-sm" onclick="addDiscoveredDevice('${device.ip}', '${device.type}', '${device.name}')">
+                                        <i class="fas fa-plus"></i> إضافة
+                                    </button>
+                                    <button class="btn btn-info btn-sm" onclick="pingDevice('${device.ip}')">
+                                        <i class="fas fa-wifi"></i> اختبار
+                                    </button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+}
+
+function addDiscoveredDevice(ip, type, name) {
+    document.getElementById('deviceName').value = name;
+    document.getElementById('deviceIP').value = ip;
+    document.getElementById('deviceType').value = type;
+    updateCredentials();
+
+    showAddDeviceModal();
+}
+
+function pingDevice(ip) {
+    showNotification(`اختبار الاتصال بـ ${ip}...`, 'info');
+
+    setTimeout(() => {
+        const success = Math.random() > 0.3;
+        if (success) {
+            showNotification(`✅ الجهاز ${ip} يرد على الاتصال`, 'success');
+        } else {
+            showNotification(`❌ لا يمكن الوصول للجهاز ${ip}`, 'error');
+        }
+    }, 2000);
+}
+
+// Statistics Functions
+function updateStatistics() {
+    let totalDevices = 0;
+    let onlineDevices = 0;
+    let totalSubscribers = 0;
+
+    Object.values(sections).forEach(section => {
+        if (section.devices) {
+            const devices = Object.values(section.devices);
+            totalDevices += devices.length;
+            onlineDevices += devices.filter(d => d.status === 'online').length;
+            totalSubscribers += devices.length * 25; // Approximate
+        }
+    });
+
+    document.getElementById('totalDevices').textContent = totalDevices;
+    document.getElementById('onlineDevices').textContent = onlineDevices;
+    document.getElementById('totalSubscribers').textContent = totalSubscribers;
+    document.getElementById('totalSections').textContent = Object.keys(sections).length;
+}
+
+function drawNetworkChart() {
+    const ctx = document.getElementById('networkChart');
+    if (!ctx) return;
+
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'],
+            datasets: [{
+                label: 'المشتركين المتصلين',
+                data: [120, 135, 142, 138, 155, 148, 162],
+                borderColor: 'rgb(37, 99, 235)',
+                backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                tension: 0.4
+            }, {
+                label: 'استخدام البيانات (GB)',
+                data: [2400, 2650, 2800, 2750, 3100, 2950, 3200],
+                borderColor: 'rgb(16, 185, 129)',
+                backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                tension: 0.4
+            }]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+}
+
+// CLI Functions
+const cliCommands = {
+    'help': () => `
+Available commands:
+- show version: Display system version
+- show interfaces status: Show interface status
+- show ip route: Display routing table
+- show running-config: Show current configuration
+- show mac address-table: Display MAC address table
+- clear: Clear terminal screen
+- ping [ip]: Ping an IP address
+- traceroute [ip]: Trace route to destination
+            `,
+    'show version': () => `
+SuperCell-Switch uptime is 45 days, 12 hours, 32 minutes
+System returned to ROM by power-on
+System restarted at 15:23:45 UTC Mon Jan 15 2025
+System image file is "c2960-lanbasek9-mz.150-2.SE11.bin"
+
+cisco WS-C2960-24TT-L (PowerPC405) processor (revision B0) with 65536K bytes of memory.
+Processor board ID FOC1234X567
+Last reset from power-on
+1 Virtual Ethernet interface
+24 FastEthernet interfaces
+2 Gigabit Ethernet interfaces
+            `,
+    'show interfaces status': () => `
+Port      Name               Status       Vlan       Duplex  Speed Type
+Fa0/1                        connected    1          a-full  a-100 10/100BaseTX
+Fa0/2                        connected    1          a-full  a-100 10/100BaseTX
+Fa0/3                        notconnect   1            auto   auto 10/100BaseTX
+Fa0/4                        connected    1          a-full  a-100 10/100BaseTX
+Fa0/5                        notconnect   1            auto   auto 10/100BaseTX
+Gi0/1                        connected    trunk      a-full a-1000 1000BaseTX
+Gi0/2                        notconnect   1            auto   auto 1000BaseTX
+            `,
+    'show ip route': () => `
+Codes: C - connected, S - static, R - RIP, M - mobile, B - BGP
+       D - EIGRP, EX - EIGRP external, O - OSPF, IA - OSPF inter area
+       N1 - OSPF NSSA external type 1, N2 - OSPF NSSA external type 2
+       E1 - OSPF external type 1, E2 - OSPF external type 2
+       i - IS-IS, su - IS-IS summary, L1 - IS-IS level-1, L2 - IS-IS level-2
+       ia - IS-IS inter area, * - candidate default, U - per-user static route
+       o - ODR, P - periodic downloaded static route
+
+Gateway of last resort is 192.168.1.1 to network 0.0.0.0
+
+C    192.168.1.0/24 is directly connected, Vlan1
+S*   0.0.0.0/0 [1/0] via 192.168.1.1
+C    10.42.85.0/24 is directly connected, Vlan10
+C    10.42.96.0/24 is directly connected, Vlan20
+            `,
+    'show running-config': () => `
+Building configuration...
+
+Current configuration : 2847 bytes
+!
+version 15.0
+no service pad
+service timestamps debug datetime msec
+service timestamps log datetime msec
+no service password-encryption
+!
+hostname SuperCell-Switch
+!
+boot-start-marker
+boot-end-marker
+!
+enable secret 5 $1$mERr$hx5rVt7rPNoS4wqbXKX7m0
+!
+interface Vlan1
+ ip address 192.168.1.10 255.255.255.0
+!
+interface Vlan10
+ ip address 10.42.85.1 255.255.255.0
+!
+interface Vlan20
+ ip address 10.42.96.1 255.255.255.0
+!
+ip default-gateway 192.168.1.1
+!
+line con 0
+line vty 0 4
+ password cisco
+ login
+line vty 5 15
+ password cisco
+ login
+!
+end
+            `,
+    'show mac address-table': () => `
+          Mac Address Table
+-------------------------------------------
+
+Vlan    Mac Address       Type        Ports
+----    -----------       --------    -----
+   1    0050.56c0.0001    DYNAMIC     Fa0/1
+   1    0050.56c0.0002    DYNAMIC     Fa0/2
+   1    0050.56c0.0003    DYNAMIC     Fa0/4
+  10    00e0.b064.0001    DYNAMIC     Gi0/1
+  10    00e0.b064.0002    DYNAMIC     Gi0/1
+  20    00e0.b064.0003    DYNAMIC     Gi0/1
+Total Mac Addresses for this criterion: 6
+            `,
+    'clear': () => {
+        document.getElementById('terminalOutput').innerHTML = '';
+        return '';
+    }
+};
+
+function handleCLIInput(event) {
+    if (event.key === 'Enter') {
+        const input = event.target;
+        const command = input.value.trim();
+        const output = document.getElementById('terminalOutput');
+
+        // Add command to output
+        output.innerHTML += `<div>SuperCell-Switch# ${command}</div>`;
+
+        // Execute command
+        const result = executeCommand(command);
+        if (result) {
+            output.innerHTML += `<div class="text-info">${result}</div>`;
+        }
+
+        // Clear input and scroll to bottom
+        input.value = '';
+        document.getElementById('terminal').scrollTop = document.getElementById('terminal').scrollHeight;
+    }
+}
+
+function executeCommand(command) {
+    const lowerCommand = command.toLowerCase();
+
+    if (cliCommands[lowerCommand]) {
+        return cliCommands[lowerCommand]();
+    } else if (lowerCommand.startsWith('ping ')) {
+        const ip = command.split(' ')[1];
+        return `
+PING ${ip} (${ip}): 56 data bytes
+64 bytes from ${ip}: icmp_seq=0 ttl=64 time=1.234 ms
+64 bytes from ${ip}: icmp_seq=1 ttl=64 time=1.456 ms
+64 bytes from ${ip}: icmp_seq=2 ttl=64 time=1.123 ms
+
+--- ${ip} ping statistics ---
+3 packets transmitted, 3 packets received, 0.0% packet loss
+round-trip min/avg/max/stddev = 1.123/1.271/1.456/0.137 ms
+                `;
+    } else if (lowerCommand.startsWith('traceroute ')) {
+        const ip = command.split(' ')[1];
+        return `
+traceroute to ${ip} (${ip}), 30 hops max, 60 byte packets
+ 1  192.168.1.1 (192.168.1.1)  0.123 ms  0.456 ms  0.789 ms
+ 2  10.0.0.1 (10.0.0.1)  1.234 ms  1.567 ms  1.890 ms
+ 3  ${ip} (${ip})  2.345 ms  2.678 ms  2.901 ms
+                `;
+    } else {
+        return `% Invalid input detected at '^' marker.`;
+    }
+}
+
+function clearTerminal() {
+    document.getElementById('terminalOutput').innerHTML = '';
+}
+
+function addCustomCommand() {
+    const command = prompt('أدخل الأمر المخصص:');
+    const response = prompt('أدخل الاستجابة:');
+
+    if (command && response) {
+        cliCommands[command.toLowerCase()] = () => response;
+        showNotification(`تم إضافة الأمر: ${command}`, 'success');
+    }
+}
+
+// Utility Functions
+function showNotification(message, type = 'info') {
+    const notification = document.createElement('div');
+    notification.className = `alert alert-${type === 'error' ? 'danger' : type} position-fixed`;
+    notification.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    notification.innerHTML = `
+        <div class="d-flex justify-content-between align-items-center">
+            <span>${message}</span>
+            <button type="button" class="btn-close" onclick="this.parentElement.parentElement.remove()"></button>
+        </div>
+    `;
+
+    document.body.appendChild(notification);
+
+    setTimeout(() => {
+        if (notification.parentElement) {
+            notification.remove();
+        }
+    }, 5000);
+}
+
+function editSection(sectionId) {
+    const section = sections[sectionId];
+    if (!section) return;
+
+    const newName = prompt('اسم القسم الجديد:', section.name);
+    if (newName && newName !== section.name) {
+        section.name = newName;
+        localStorage.setItem('networkSections', JSON.stringify(sections));
+        loadSections();
+    }
+}
+
+function deleteSection(sectionId) {
+    if (confirm('هل أنت متأكد من حذف هذا القسم وجميع أجهزته؟')) {
+        delete sections[sectionId];
+
+        // Remove from pinned sections
+        const pinnedIndex = pinnedSections.indexOf(sectionId);
+        if (pinnedIndex > -1) {
+            pinnedSections.splice(pinnedIndex, 1);
+            localStorage.setItem('pinnedSections', JSON.stringify(pinnedSections));
+        }
+
+        localStorage.setItem('networkSections', JSON.stringify(sections));
+        loadSections();
+    }
+}
+
+// Auto-refresh data every 30 seconds
+setInterval(() => {
+    if (currentDeviceId) {
+        refreshDeviceData();
+    }
+    updateStatistics();
+}, 30000);
+
+// Handle window resize for responsive charts
+window.addEventListener('resize', () => {
+    if (Chart.instances.length > 0) {
+        Chart.instances.forEach(chart => chart.resize());
+    }
+});
+
+// Initialize tooltips
+document.addEventListener('DOMContentLoaded', function() {
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+});
