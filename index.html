@@ -41,11 +41,6 @@
                             <i class="fas fa-chart-bar"></i> الإحصائيات
                         </a>
                     </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="#" onclick="showSection('cli')">
-                            <i class="fas fa-terminal"></i> سيسكو CLI
-                        </a>
-                    </li>
                 </ul>
                 <div class="d-flex">
                     <button class="btn btn-outline-primary me-2" onclick="showAddSectionModal()">
@@ -62,15 +57,23 @@
     <div class="container-fluid main-container">
         <!-- Dashboard Section -->
         <div id="dashboard-section">
-            <div id="pinnedSections"></div>
-            <div id="regularSections"></div>
+            <h4 class="text-white">Pinned Sections</h4>
+            <div id="pinnedSections" class="row"></div>
+            <hr class="my-4" style="border-color: rgba(255,255,255,0.3);">
+            <h4 class="text-white">All Sections</h4>
+            <div id="regularSections" class="row"></div>
         </div>
 
         <!-- Agents Section -->
         <div id="agents-section" style="display: none;">
-            <div class="row">
-                <div class="col-12">
+            <div class="row mb-3">
+                <div class="col-6">
                     <h2><i class="fas fa-users"></i> إدارة الوكلاء</h2>
+                </div>
+                <div class="col-6 text-end">
+                    <button class="btn btn-success" onclick="showAddEditAgentModal()">
+                        <i class="fas fa-user-plus"></i> إضافة وكيل جديد
+                    </button>
                 </div>
             </div>
             <div class="row" id="agentsContainer">
@@ -80,21 +83,24 @@
 
         <!-- Discovery Section -->
         <div id="discovery-section" style="display: none;">
-            <div class="discovery-section">
-                <h2><i class="fas fa-search"></i> استكشاف الشبكة</h2>
-                <p>اكتشف الأجهزة المتصلة في شبكتك تلقائياً</p>
-                <button class="btn btn-light" onclick="startNetworkDiscovery()">
-                    <i class="fas fa-play"></i> بدء الاستكشاف
-                </button>
+            <div class="discovery-section section-card">
+                <h2><i class="fas fa-search-location"></i> استكشاف الشبكة</h2>
+                <p class="text-white-50">أدخل نطاق IP (مثل 192.168.1.0/24) لبدء البحث عن الأجهزة.</p>
+                <div class="input-group mb-3">
+                    <input type="text" class="form-control" id="ipRangeInput" placeholder="e.g., 10.42.85.0/24" value="10.42.85.0/24">
+                    <button class="btn btn-primary" onclick="startNetworkDiscovery()">
+                        <i class="fas fa-search"></i> بحث
+                    </button>
+                </div>
             </div>
-            <div id="discoveryResults"></div>
+            <div id="discoveryResults" class="mt-4"></div>
         </div>
 
         <!-- Statistics Section -->
         <div id="statistics-section" style="display: none;">
             <div class="row">
                 <div class="col-12">
-                    <h2><i class="fas fa-chart-bar"></i> إحصائيات الشبكة</h2>
+                    <h2 class="text-white"><i class="fas fa-chart-bar"></i> إحصائيات الشبكة</h2>
                 </div>
             </div>
             <div class="row">
@@ -113,7 +119,7 @@
                 <div class="col-md-3">
                     <div class="stats-card text-center">
                         <h3 id="totalSubscribers">0</h3>
-                        <p>إجمالي المشتركين</p>
+                        <p>إجمالي المشتركين (تقريبي)</p>
                     </div>
                 </div>
                 <div class="col-md-3">
@@ -123,48 +129,53 @@
                     </div>
                 </div>
             </div>
-            <div class="row">
+            <div class="row mt-4">
+                <div class="col-md-6">
+                    <div class="section-card">
+                        <h5><i class="fas fa-sitemap"></i> أكثر 5 أقسام ازدحاماً</h5>
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>القسم</th>
+                                    <th>عدد الأجهزة</th>
+                                </tr>
+                            </thead>
+                            <tbody id="topSectionsTable">
+                                <!-- Data will be injected by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="section-card">
+                        <h5><i class="fas fa-hdd"></i> توزيع الأجهزة حسب النوع</h5>
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>نوع الجهاز</th>
+                                    <th>العدد</th>
+                                </tr>
+                            </thead>
+                            <tbody id="deviceTypeTable">
+                                <!-- Data will be injected by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="row mt-2">
                 <div class="col-12">
                     <div class="section-card">
-                        <canvas id="networkChart" width="400" height="200"></canvas>
+                        <h5><i class="fas fa-chart-line"></i> أداء الشبكة العام</h5>
+                        <canvas id="networkChart" width="400" height="150"></canvas>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- CLI Section -->
+        <!-- CLI Section (now hidden and will be moved to a modal) -->
         <div id="cli-section" style="display: none;">
-            <div class="section-card">
-                <div class="section-header">
-                    <h3><i class="fas fa-terminal"></i> Cisco CLI Console</h3>
-                    <div>
-                        <button class="btn btn-success btn-sm" onclick="addCustomCommand()">
-                            <i class="fas fa-plus"></i> إضافة أمر مخصص
-                        </button>
-                        <button class="btn btn-primary btn-sm" onclick="clearTerminal()">
-                            <i class="fas fa-trash"></i> مسح الشاشة
-                        </button>
-                    </div>
-                </div>
-                <div class="cli-terminal" id="terminal">
-                    <div>SuperCell-Switch> <span class="text-warning">Connected</span></div>
-                    <div>Type 'help' to see available commands</div>
-                    <div id="terminalOutput"></div>
-                    <div>
-                        SuperCell-Switch# <input type="text" class="cli-input" id="cliInput" style="width: 80%;" onkeypress="handleCLIInput(event)">
-                    </div>
-                </div>
-                <div class="mt-3">
-                    <h5>الأوامر السريعة:</h5>
-                    <div class="btn-group flex-wrap" role="group">
-                        <button class="btn btn-outline-secondary btn-sm" onclick="executeCommand('show version')">show version</button>
-                        <button class="btn btn-outline-secondary btn-sm" onclick="executeCommand('show interfaces status')">show interfaces</button>
-                        <button class="btn btn-outline-secondary btn-sm" onclick="executeCommand('show ip route')">show ip route</button>
-                        <button class="btn btn-outline-secondary btn-sm" onclick="executeCommand('show running-config')">show running-config</button>
-                        <button class="btn btn-outline-secondary btn-sm" onclick="executeCommand('show mac address-table')">show mac table</button>
-                    </div>
-                </div>
-            </div>
+
         </div>
     </div>
 
@@ -352,6 +363,88 @@
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+
+    <!-- Add/Edit Agent Modal -->
+    <div class="modal fade" id="addEditAgentModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="agentModalTitle">إضافة وكيل جديد</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="addEditAgentForm">
+                        <input type="hidden" id="agentId">
+                        <div class="mb-3">
+                            <label class="form-label">اسم الوكيل</label>
+                            <input type="text" class="form-control" id="agentName" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">رقم الهاتف</label>
+                            <input type="tel" class="form-control" id="agentPhone">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">الموقع</label>
+                            <input type="text" class="form-control" id="agentLocation">
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
+                    <button type="button" class="btn btn-primary" onclick="saveAgent()">حفظ</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Agent Details Modal -->
+    <div class="modal fade" id="agentDetailsModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">تفاصيل الوكيل</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p><strong>الاسم:</strong> <span id="detailAgentName"></span></p>
+                    <p><strong>رقم الهاتف:</strong> <span id="detailAgentPhone"></span></p>
+                    <p><strong>الموقع:</strong> <span id="detailAgentLocation"></span></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cisco CLI Modal -->
+    <div class="modal fade" id="ciscoCliModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="cliModalTitle"><i class="fas fa-terminal"></i> Cisco CLI Console</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="cli-terminal" id="terminal">
+                        <div id="terminalOutput"></div>
+                        <div>
+                            <span id="cliPrompt">SuperCell-Switch#</span>
+                            <input type="text" class="cli-input" id="cliInput" style="width: 80%;" onkeypress="handleCLIInput(event)">
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <h6>الأوامر السريعة:</h6>
+                        <div class="btn-group flex-wrap" role="group">
+                            <button class="btn btn-outline-secondary btn-sm" onclick="executeCliCommand('show version')">show version</button>
+                            <button class="btn btn-outline-secondary btn-sm" onclick="executeCliCommand('show interfaces status')">show interfaces</button>
+                            <button class="btn btn-outline-secondary btn-sm" onclick="executeCliCommand('show ip route')">show ip route</button>
+                            <button class="btn btn-outline-secondary btn-sm" onclick="executeCliCommand('show running-config')">show running-config</button>
+                            <button class="btn btn-outline-secondary btn-sm" onclick="executeCliCommand('show mac address-table')">show mac table</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="static/js/script.js"></script>
 </body>
 </html>

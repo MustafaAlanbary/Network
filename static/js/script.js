@@ -79,6 +79,7 @@ function showSection(sectionName) {
         loadAgents();
     } else if (sectionName === 'statistics') {
         updateStatistics();
+        renderAdvancedStats();
         drawNetworkChart();
     }
 }
@@ -113,12 +114,16 @@ function loadSections() {
 
 function createSectionCard(sectionId, section) {
     const card = document.createElement('div');
-    card.className = `col-md-6 col-lg-4 mb-4`;
+    // The columns classes are now on the card element itself
+    card.className = `col-xl-4 col-lg-6 col-md-6 mb-4`;
 
     const isPinned = pinnedSections.includes(sectionId);
+    const totalDevices = section.devices ? Object.keys(section.devices).length : 0;
+    const mockTx = (Math.random() * 500).toFixed(2);
+    const mockRx = (Math.random() * 800).toFixed(2);
 
     card.innerHTML = `
-        <div class="section-card ${isPinned ? 'pinned' : ''}">
+        <div class="section-card h-100 ${isPinned ? 'pinned' : ''}">
             <button class="btn btn-sm ${isPinned ? 'btn-warning' : 'btn-outline-warning'} pin-btn"
                     onclick="togglePin('${sectionId}')">
                 <i class="fas fa-thumbtack"></i>
@@ -131,26 +136,41 @@ function createSectionCard(sectionId, section) {
                         <i class="fas fa-ellipsis-v"></i>
                     </button>
                     <ul class="dropdown-menu">
-                        <li><a class="dropdown-item" onclick="editSection('${sectionId}')">
-                            <i class="fas fa-edit"></i> تعديل القسم</a></li>
-                        <li><a class="dropdown-item" onclick="deleteSection('${sectionId}')">
-                            <i class="fas fa-trash"></i> حذف القسم</a></li>
+                        <li><a class="dropdown-item" href="#" onclick="editSection('${sectionId}')">
+                            <i class="fas fa-edit fa-fw"></i> تعديل القسم</a></li>
+                        <li><a class="dropdown-item" href="#" onclick="deleteSection('${sectionId}')">
+                            <i class="fas fa-trash fa-fw"></i> حذف القسم</a></li>
                     </ul>
                 </div>
             </div>
 
             <div class="mb-3">
                 <small class="text-muted">
-                    <i class="fas fa-user"></i> الوكيل: ${agents[section.agent]?.name || 'غير محدد'}
+                    <i class="fas fa-user fa-fw"></i> الوكيل: <strong>${agents[section.agent]?.name || 'غير محدد'}</strong>
+                </small>
+                <br>
+                <small class="text-muted">
+                    <i class="fas fa-router fa-fw"></i> الأجهزة: <strong>${totalDevices}</strong>
                 </small>
             </div>
 
-            <div class="devices-container">
+            <div class="mb-3 p-2 rounded" style="background-color: #f1f5f9;">
+                <div class="d-flex justify-content-between">
+                    <span><i class="fas fa-arrow-up text-success"></i> TX: ${mockTx} Mbps</span>
+                    <span><i class="fas fa-arrow-down text-danger"></i> RX: ${mockRx} Mbps</span>
+                </div>
+                <div class="progress mt-2" style="height: 5px;">
+                    <div class="progress-bar bg-success" role="progressbar" style="width: ${mockTx / 10}%" ></div>
+                    <div class="progress-bar bg-danger" role="progressbar" style="width: ${mockRx / 10}%" ></div>
+                </div>
+            </div>
+
+            <div class="devices-container" style="max-height: 200px; overflow-y: auto;">
                 ${createDevicesHTML(section.devices)}
             </div>
 
-            <div class="mt-3">
-                <button class="btn btn-success btn-sm" onclick="showAddDeviceModal('${sectionId}')">
+            <div class="mt-auto pt-3 text-center">
+                <button class="btn btn-outline-primary btn-sm" onclick="showAddDeviceModal('${sectionId}')">
                     <i class="fas fa-plus"></i> إضافة جهاز
                 </button>
             </div>
@@ -422,8 +442,19 @@ function connectToDevice(deviceId) {
         }, 1500);
 
     } else if (device.type === 'cisco') {
-        // Open SSH connection simulation
-        alert(`اتصال SSH إلى ${device.name} (${device.ip})\nاسم المستخدم: ${device.username}\nكلمة المرور: ${device.password}`);
+        // Open the CLI in a modal
+        const modalTitle = document.getElementById('cliModalTitle');
+        const cliPrompt = document.getElementById('cliPrompt');
+        const terminalOutput = document.getElementById('terminalOutput');
+
+        modalTitle.innerHTML = `<i class="fas fa-terminal"></i> CLI: ${device.name}`;
+        cliPrompt.textContent = `${device.name}#`;
+        terminalOutput.innerHTML = `<div>Connecting to ${device.ip}...</div><div><span class="text-success">Connected!</span> Type 'help' for commands.</div>`;
+        document.getElementById('cliInput').value = '';
+
+        const modal = new bootstrap.Modal(document.getElementById('ciscoCliModal'));
+        modal.show();
+
     } else {
         // For MikroTik and Memosa - simulate SSH/Telnet
         alert(`اتصال إلى ${device.name} (${device.ip})\nاسم المستخدم: ${device.username}\nكلمة المرور: ${device.password}`);
@@ -616,30 +647,33 @@ function loadAgents() {
     Object.entries(agents).forEach(([agentId, agent]) => {
         const agentDevices = getAgentDevices(agentId);
 
-        const agentCard = document.createElement('div');
-        agentCard.className = 'col-md-6 col-lg-4 mb-4';
+        const agentCardWrapper = document.createElement('div');
+        agentCardWrapper.className = 'col-md-6 col-lg-4 mb-4';
 
-        agentCard.innerHTML = `
-            <div class="agent-card" onclick="showAgentDetails('${agentId}')">
-                <h4><i class="fas fa-user"></i> ${agent.name}</h4>
+        agentCardWrapper.innerHTML = `
+            <div class="agent-card text-white">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h4 class="mb-0"><i class="fas fa-user-shield"></i> ${agent.name}</h4>
+                    <div class="btn-group">
+                        <button class="btn btn-sm btn-outline-light" onclick="showAgentDetailsModal('${agentId}')"><i class="fas fa-info-circle"></i></button>
+                        <button class="btn btn-sm btn-outline-light" onclick="showAddEditAgentModal('${agentId}')"><i class="fas fa-edit"></i></button>
+                        <button class="btn btn-sm btn-outline-danger" onclick="deleteAgent('${agentId}')"><i class="fas fa-trash"></i></button>
+                    </div>
+                </div>
+                <hr style="border-color: rgba(255,255,255,0.5);">
                 <div class="mt-3">
-                    <div class="d-flex justify-content-between mb-2">
-                        <span>الأجهزة المتصلة:</span>
-                        <strong>${agentDevices.length}</strong>
-                    </div>
-                    <div class="d-flex justify-content-between mb-2">
-                        <span>الأقسام:</span>
-                        <strong>${getAgentSections(agentId).length}</strong>
-                    </div>
-                    <div class="d-flex justify-content-between">
-                        <span>إجمالي المشتركين:</span>
-                        <strong>${agentDevices.length * 25}</strong>
-                    </div>
+                    <p class="mb-2"><strong><i class="fas fa-phone fa-fw"></i> الهاتف:</strong> ${agent.phone || 'غير محدد'}</p>
+                    <p class="mb-2"><strong><i class="fas fa-map-marker-alt fa-fw"></i> الموقع:</strong> ${agent.location || 'غير محدد'}</p>
+                </div>
+                <div class="mt-3 text-center">
+                     <button class="btn btn-light w-100" onclick="showAgentDeviceDetails('${agentId}')">
+                        <i class="fas fa-network-wired"></i> عرض أجهزة الوكيل (${agentDevices.length})
+                    </button>
                 </div>
             </div>
         `;
 
-        container.appendChild(agentCard);
+        container.appendChild(agentCardWrapper);
     });
 }
 
@@ -657,13 +691,14 @@ function getAgentSections(agentId) {
     return Object.entries(sections).filter(([_, section]) => section.agent === agentId);
 }
 
-function showAgentDetails(agentId) {
+function showAgentDeviceDetails(agentId) {
     const agent = agents[agentId];
     const agentSections = getAgentSections(agentId);
 
     // Create a temporary section to show agent's devices
     const agentSection = document.createElement('div');
     agentSection.className = 'modal fade';
+    agentSection.id = `agent-devices-modal-${agentId}`;
     agentSection.innerHTML = `
         <div class="modal-dialog modal-xl">
             <div class="modal-content">
@@ -673,14 +708,14 @@ function showAgentDetails(agentId) {
                 </div>
                 <div class="modal-body">
                     <div class="row">
-                        ${agentSections.map(([sectionId, section]) => `
+                        ${agentSections.length > 0 ? agentSections.map(([sectionId, section]) => `
                             <div class="col-md-6 mb-4">
                                 <div class="section-card">
                                     <h5><i class="${section.icon}"></i> ${section.name}</h5>
                                     ${createDevicesHTML(section.devices)}
                                 </div>
                             </div>
-                        `).join('')}
+                        `).join('') : '<p class="text-center">لا توجد أقسام أو أجهزة معينة لهذا الوكيل.</p>'}
                     </div>
                 </div>
             </div>
@@ -691,52 +726,164 @@ function showAgentDetails(agentId) {
     const modal = new bootstrap.Modal(agentSection);
     modal.show();
 
-    modal._element.addEventListener('hidden.bs.modal', () => {
+    agentSection.addEventListener('hidden.bs.modal', () => {
         document.body.removeChild(agentSection);
     });
 }
 
+function showAddEditAgentModal(agentId = null) {
+    const form = document.getElementById('addEditAgentForm');
+    form.reset();
+    document.getElementById('agentId').value = '';
+
+    const modalTitle = document.getElementById('agentModalTitle');
+    if (agentId) {
+        modalTitle.textContent = 'تعديل بيانات الوكيل';
+        const agent = agents[agentId];
+        document.getElementById('agentId').value = agentId;
+        document.getElementById('agentName').value = agent.name;
+        document.getElementById('agentPhone').value = agent.phone || '';
+        document.getElementById('agentLocation').value = agent.location || '';
+    } else {
+        modalTitle.textContent = 'إضافة وكيل جديد';
+    }
+
+    const modal = new bootstrap.Modal(document.getElementById('addEditAgentModal'));
+    modal.show();
+}
+
+function saveAgent() {
+    const agentId = document.getElementById('agentId').value;
+    const agentName = document.getElementById('agentName').value;
+    const agentPhone = document.getElementById('agentPhone').value;
+    const agentLocation = document.getElementById('agentLocation').value;
+
+    if (!agentName) {
+        showNotification('اسم الوكيل مطلوب.', 'danger');
+        return;
+    }
+
+    if (agentId) {
+        // Update existing agent
+        agents[agentId].name = agentName;
+        agents[agentId].phone = agentPhone;
+        agents[agentId].location = agentLocation;
+    } else {
+        // Add new agent
+        const newAgentId = `agent-${Date.now()}`;
+        agents[newAgentId] = {
+            name: agentName,
+            phone: agentPhone,
+            location: agentLocation,
+            devices: [] // Kept for legacy compatibility, though not used in new structure
+        };
+    }
+
+    localStorage.setItem('agents', JSON.stringify(agents));
+    loadAgents();
+    showNotification('تم حفظ بيانات الوكيل بنجاح.', 'success');
+    bootstrap.Modal.getInstance(document.getElementById('addEditAgentModal')).hide();
+}
+
+function deleteAgent(agentId) {
+    if (confirm(`هل أنت متأكد من حذف الوكيل "${agents[agentId].name}"؟ لا يمكن التراجع عن هذا الإجراء.`)) {
+        // Optional: Check if agent is assigned to any sections and handle it
+        const isAssigned = Object.values(sections).some(s => s.agent === agentId);
+        if (isAssigned) {
+            if (!confirm("هذا الوكيل معين لبعض الأقسام. هل تريد المتابعة وحذفه؟ (ستحتاج لتعيين وكلاء جدد لهذه الأقسام)")) {
+                return;
+            }
+        }
+
+        delete agents[agentId];
+        localStorage.setItem('agents', JSON.stringify(agents));
+        loadAgents();
+        showNotification('تم حذف الوكيل.', 'success');
+    }
+}
+
+function showAgentDetailsModal(agentId) {
+    const agent = agents[agentId];
+    document.getElementById('detailAgentName').textContent = agent.name;
+    document.getElementById('detailAgentPhone').textContent = agent.phone || 'غير محدد';
+    document.getElementById('detailAgentLocation').textContent = agent.location || 'غير محدد';
+    const modal = new bootstrap.Modal(document.getElementById('agentDetailsModal'));
+    modal.show();
+}
+
 // Discovery Section
+let lastDiscoveredDevices = []; // Store the last discovery results
+
 function startNetworkDiscovery() {
+    const ipRange = document.getElementById('ipRangeInput').value;
+    if (!ipRange || !ipRange.includes('/')) {
+        showNotification('الرجاء إدخال نطاق IP صحيح (e.g., 192.168.1.0/24)', 'danger');
+        return;
+    }
+
     const resultsContainer = document.getElementById('discoveryResults');
-    resultsContainer.innerHTML = '<div class="text-center"><div class="spinner-border" role="status"></div><p class="mt-2">جاري استكشاف الشبكة...</p></div>';
+    resultsContainer.innerHTML = `
+        <div class="section-card text-center">
+            <div class="spinner-border text-primary" role="status"></div>
+            <p class="mt-2">جاري البحث في النطاق: ${ipRange}...</p>
+        </div>
+    `;
 
     setTimeout(() => {
-        const discoveredDevices = generateDiscoveryResults();
+        const discoveredDevices = generateDiscoveryResults(ipRange);
+        lastDiscoveredDevices = discoveredDevices; // Save for bulk add
         displayDiscoveryResults(discoveredDevices);
     }, 3000);
 }
 
-function generateDiscoveryResults() {
+function generateDiscoveryResults(ipRange) {
     const devices = [];
-    const subnets = ['10.42.85', '10.42.96', '192.168.1', '192.168.100'];
+    const baseIp = ipRange.split('/')[0].split('.').slice(0, 3).join('.');
+    const deviceCount = Math.floor(Math.random() * 20) + 5;
 
-    subnets.forEach(subnet => {
-        const deviceCount = Math.floor(Math.random() * 20) + 5;
-        for (let i = 1; i <= deviceCount; i++) {
-            const ip = `${subnet}.${i + 1}`;
-            const types = ['mikrotik', 'ubiquiti', 'memosa', 'cisco'];
-            const type = types[Math.floor(Math.random() * types.length)];
+    for (let i = 1; i <= deviceCount; i++) {
+        const ip = `${baseIp}.${i + 1}`;
+        const types = ['mikrotik', 'ubiquiti', 'memosa', 'cisco'];
+        const type = types[Math.floor(Math.random() * types.length)];
 
-            devices.push({
-                ip: ip,
-                type: type,
-                name: `Device-${ip.replace(/\./g, '-')}`,
-                status: Math.random() > 0.2 ? 'online' : 'offline',
-                mac: Array.from({length: 6}, () => Math.floor(Math.random() * 256).toString(16).padStart(2, '0')).join(':').toUpperCase()
-            });
-        }
-    });
+        devices.push({
+            ip: ip,
+            type: type,
+            name: `${type.charAt(0).toUpperCase()}${type.slice(1)}-${ip.replace(/\./g, '-')}`,
+            status: Math.random() > 0.2 ? 'online' : 'offline',
+            mac: Array.from({length: 6}, () => Math.floor(Math.random() * 256).toString(16).padStart(2, '0')).join(':').toUpperCase()
+        });
+    }
 
     return devices;
 }
 
 function displayDiscoveryResults(devices) {
     const resultsContainer = document.getElementById('discoveryResults');
+    if (devices.length === 0) {
+        resultsContainer.innerHTML = `<div class="section-card"><p class="text-center">لم يتم العثور على أجهزة في هذا النطاق.</p></div>`;
+        return;
+    }
+
+    // Create dropdown with sections
+    let sectionOptions = Object.entries(sections).map(([sectionId, section]) =>
+        `<option value="${sectionId}">${section.name}</option>`
+    ).join('');
 
     resultsContainer.innerHTML = `
         <div class="section-card">
-            <h4>نتائج الاستكشاف - ${devices.length} جهاز</h4>
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h4>نتائج الاستكشاف - ${devices.length} جهاز</h4>
+                <div class="input-group w-50">
+                    <select class="form-select" id="bulkAddSectionSelect">
+                        <option value="">اختر قسماً للإضافة إليه...</option>
+                        ${sectionOptions}
+                    </select>
+                    <button class="btn btn-success" onclick="addAllDiscoveredToSection()">
+                        <i class="fas fa-plus-circle"></i> إضافة الكل للقسم
+                    </button>
+                </div>
+            </div>
             <div class="table-responsive">
                 <table class="table table-striped">
                     <thead>
@@ -754,7 +901,7 @@ function displayDiscoveryResults(devices) {
                                 <td><strong>${device.ip}</strong></td>
                                 <td>
                                     <i class="${getDeviceIcon(device.type)}"></i>
-                                    ${device.type.toUpperCase()}
+                                    ${device.type.charAt(0).toUpperCase() + device.type.slice(1)}
                                 </td>
                                 <td><code>${device.mac}</code></td>
                                 <td>
@@ -776,6 +923,42 @@ function displayDiscoveryResults(devices) {
             </div>
         </div>
     `;
+}
+
+function addAllDiscoveredToSection() {
+    const sectionId = document.getElementById('bulkAddSectionSelect').value;
+    if (!sectionId) {
+        showNotification('الرجاء اختيار قسم أولاً.', 'warning');
+        return;
+    }
+
+    if (lastDiscoveredDevices.length === 0) {
+        showNotification('لا توجد أجهزة مكتشفة لإضافتها.', 'warning');
+        return;
+    }
+
+    let addedCount = 0;
+    lastDiscoveredDevices.forEach(device => {
+        // Avoid adding duplicates
+        const alreadyExists = Object.values(sections[sectionId].devices || {}).some(d => d.ip === device.ip);
+        if (!alreadyExists) {
+            const deviceId = `${device.type}-${device.ip.replace(/\./g, '-')}`;
+            sections[sectionId].devices[deviceId] = {
+                id: deviceId,
+                name: device.name,
+                type: device.type,
+                ip: device.ip,
+                username: 'auto-added',
+                password: 'password',
+                status: device.status
+            };
+            addedCount++;
+        }
+    });
+
+    localStorage.setItem('networkSections', JSON.stringify(sections));
+    loadSections(); // Refresh the main dashboard
+    showNotification(`تمت إضافة ${addedCount} جهاز جديد إلى قسم "${sections[sectionId].name}".`, 'success');
 }
 
 function addDiscoveredDevice(ip, type, name) {
@@ -863,102 +1046,50 @@ Available commands:
 - show ip route: Display routing table
 - show running-config: Show current configuration
 - show mac address-table: Display MAC address table
-- clear: Clear terminal screen
 - ping [ip]: Ping an IP address
 - traceroute [ip]: Trace route to destination
+- clear: Clear the terminal screen
             `,
     'show version': () => `
 SuperCell-Switch uptime is 45 days, 12 hours, 32 minutes
 System returned to ROM by power-on
-System restarted at 15:23:45 UTC Mon Jan 15 2025
 System image file is "c2960-lanbasek9-mz.150-2.SE11.bin"
-
-cisco WS-C2960-24TT-L (PowerPC405) processor (revision B0) with 65536K bytes of memory.
-Processor board ID FOC1234X567
-Last reset from power-on
-1 Virtual Ethernet interface
-24 FastEthernet interfaces
-2 Gigabit Ethernet interfaces
-            `,
+cisco WS-C2960-24TT-L (PowerPC405) processor
+    `,
     'show interfaces status': () => `
 Port      Name               Status       Vlan       Duplex  Speed Type
 Fa0/1                        connected    1          a-full  a-100 10/100BaseTX
 Fa0/2                        connected    1          a-full  a-100 10/100BaseTX
 Fa0/3                        notconnect   1            auto   auto 10/100BaseTX
-Fa0/4                        connected    1          a-full  a-100 10/100BaseTX
-Fa0/5                        notconnect   1            auto   auto 10/100BaseTX
 Gi0/1                        connected    trunk      a-full a-1000 1000BaseTX
-Gi0/2                        notconnect   1            auto   auto 1000BaseTX
-            `,
+    `,
     'show ip route': () => `
 Codes: C - connected, S - static, R - RIP, M - mobile, B - BGP
-       D - EIGRP, EX - EIGRP external, O - OSPF, IA - OSPF inter area
-       N1 - OSPF NSSA external type 1, N2 - OSPF NSSA external type 2
-       E1 - OSPF external type 1, E2 - OSPF external type 2
-       i - IS-IS, su - IS-IS summary, L1 - IS-IS level-1, L2 - IS-IS level-2
-       ia - IS-IS inter area, * - candidate default, U - per-user static route
-       o - ODR, P - periodic downloaded static route
-
 Gateway of last resort is 192.168.1.1 to network 0.0.0.0
-
 C    192.168.1.0/24 is directly connected, Vlan1
 S*   0.0.0.0/0 [1/0] via 192.168.1.1
-C    10.42.85.0/24 is directly connected, Vlan10
-C    10.42.96.0/24 is directly connected, Vlan20
-            `,
+    `,
     'show running-config': () => `
 Building configuration...
-
-Current configuration : 2847 bytes
-!
-version 15.0
-no service pad
-service timestamps debug datetime msec
-service timestamps log datetime msec
-no service password-encryption
 !
 hostname SuperCell-Switch
-!
-boot-start-marker
-boot-end-marker
 !
 enable secret 5 $1$mERr$hx5rVt7rPNoS4wqbXKX7m0
 !
 interface Vlan1
  ip address 192.168.1.10 255.255.255.0
 !
-interface Vlan10
- ip address 10.42.85.1 255.255.255.0
-!
-interface Vlan20
- ip address 10.42.96.1 255.255.255.0
-!
-ip default-gateway 192.168.1.1
-!
-line con 0
-line vty 0 4
- password cisco
- login
-line vty 5 15
- password cisco
- login
-!
 end
-            `,
+    `,
     'show mac address-table': () => `
           Mac Address Table
 -------------------------------------------
-
 Vlan    Mac Address       Type        Ports
 ----    -----------       --------    -----
    1    0050.56c0.0001    DYNAMIC     Fa0/1
    1    0050.56c0.0002    DYNAMIC     Fa0/2
-   1    0050.56c0.0003    DYNAMIC     Fa0/4
-  10    00e0.b064.0001    DYNAMIC     Gi0/1
-  10    00e0.b064.0002    DYNAMIC     Gi0/1
-  20    00e0.b064.0003    DYNAMIC     Gi0/1
-Total Mac Addresses for this criterion: 6
-            `,
+Total Mac Addresses for this criterion: 2
+    `,
     'clear': () => {
         document.getElementById('terminalOutput').innerHTML = '';
         return '';
@@ -969,24 +1100,25 @@ function handleCLIInput(event) {
     if (event.key === 'Enter') {
         const input = event.target;
         const command = input.value.trim();
-        const output = document.getElementById('terminalOutput');
+        if (command) {
+            const output = document.getElementById('terminalOutput');
+            const prompt = document.getElementById('cliPrompt').textContent;
 
-        // Add command to output
-        output.innerHTML += `<div>SuperCell-Switch# ${command}</div>`;
+            output.innerHTML += `<div>${prompt} ${command}</div>`;
 
-        // Execute command
-        const result = executeCommand(command);
-        if (result) {
-            output.innerHTML += `<div class="text-info">${result}</div>`;
+            const result = executeCliCommand(command);
+            if (result) {
+                // Use pre to preserve formatting
+                output.innerHTML += `<div class="text-info" style="white-space: pre-wrap;">${result}</div>`;
+            }
+
+            input.value = '';
+            document.getElementById('terminal').scrollTop = document.getElementById('terminal').scrollHeight;
         }
-
-        // Clear input and scroll to bottom
-        input.value = '';
-        document.getElementById('terminal').scrollTop = document.getElementById('terminal').scrollHeight;
     }
 }
 
-function executeCommand(command) {
+function executeCliCommand(command) {
     const lowerCommand = command.toLowerCase();
 
     if (cliCommands[lowerCommand]) {
@@ -997,36 +1129,18 @@ function executeCommand(command) {
 PING ${ip} (${ip}): 56 data bytes
 64 bytes from ${ip}: icmp_seq=0 ttl=64 time=1.234 ms
 64 bytes from ${ip}: icmp_seq=1 ttl=64 time=1.456 ms
-64 bytes from ${ip}: icmp_seq=2 ttl=64 time=1.123 ms
-
 --- ${ip} ping statistics ---
-3 packets transmitted, 3 packets received, 0.0% packet loss
-round-trip min/avg/max/stddev = 1.123/1.271/1.456/0.137 ms
-                `;
+2 packets transmitted, 2 packets received, 0.0% packet loss
+        `;
     } else if (lowerCommand.startsWith('traceroute ')) {
         const ip = command.split(' ')[1];
         return `
 traceroute to ${ip} (${ip}), 30 hops max, 60 byte packets
- 1  192.168.1.1 (192.168.1.1)  0.123 ms  0.456 ms  0.789 ms
- 2  10.0.0.1 (10.0.0.1)  1.234 ms  1.567 ms  1.890 ms
- 3  ${ip} (${ip})  2.345 ms  2.678 ms  2.901 ms
-                `;
+ 1  192.168.1.1 (192.168.1.1)  0.456 ms
+ 2  ${ip} (${ip})  2.678 ms
+        `;
     } else {
         return `% Invalid input detected at '^' marker.`;
-    }
-}
-
-function clearTerminal() {
-    document.getElementById('terminalOutput').innerHTML = '';
-}
-
-function addCustomCommand() {
-    const command = prompt('أدخل الأمر المخصص:');
-    const response = prompt('أدخل الاستجابة:');
-
-    if (command && response) {
-        cliCommands[command.toLowerCase()] = () => response;
-        showNotification(`تم إضافة الأمر: ${command}`, 'success');
     }
 }
 
@@ -1086,6 +1200,49 @@ setInterval(() => {
     }
     updateStatistics();
 }, 30000);
+
+function renderAdvancedStats() {
+    // 1. Top 5 Sections by Device Count
+    const topSections = Object.entries(sections)
+        .map(([sectionId, section]) => ({
+            name: section.name,
+            deviceCount: Object.keys(section.devices || {}).length
+        }))
+        .sort((a, b) => b.deviceCount - a.deviceCount)
+        .slice(0, 5);
+
+    const topSectionsTable = document.getElementById('topSectionsTable');
+    topSectionsTable.innerHTML = topSections.map(s => `
+        <tr>
+            <td>${s.name}</td>
+            <td><span class="badge bg-primary rounded-pill">${s.deviceCount}</span></td>
+        </tr>
+    `).join('');
+
+    // 2. Device Count by Type
+    const deviceTypes = {
+        mikrotik: { name: 'MikroTik', count: 0, icon: 'fa-wifi' },
+        ubiquiti: { name: 'Ubiquiti', count: 0, icon: 'fa-broadcast-tower' },
+        memosa: { name: 'Memosa', count: 0, icon: 'fa-satellite-dish' },
+        cisco: { name: 'Cisco', count: 0, icon: 'fa-network-wired' }
+    };
+
+    Object.values(sections).forEach(section => {
+        Object.values(section.devices || {}).forEach(device => {
+            if (deviceTypes[device.type]) {
+                deviceTypes[device.type].count++;
+            }
+        });
+    });
+
+    const deviceTypeTable = document.getElementById('deviceTypeTable');
+    deviceTypeTable.innerHTML = Object.values(deviceTypes).map(t => `
+        <tr>
+            <td><i class="fas ${t.icon} fa-fw text-muted"></i> ${t.name}</td>
+            <td><span class="badge bg-secondary rounded-pill">${t.count}</span></td>
+        </tr>
+    `).join('');
+}
 
 // Handle window resize for responsive charts
 window.addEventListener('resize', () => {
